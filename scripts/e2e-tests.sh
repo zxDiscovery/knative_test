@@ -194,10 +194,8 @@ function create_test_cluster() {
   touch $HOME/.ssh/google_compute_engine.pub
   touch $HOME/.ssh/google_compute_engine
   # Clear user and cluster variables, so they'll be set to the test cluster.
-  # DOCKER_REPO_OVERRIDE is not touched because when running locally it must
+  # KO_DOCKER_REPO is not touched because when running locally it must
   # be a writeable docker repo.
-  export K8S_USER_OVERRIDE=
-  export K8S_CLUSTER_OVERRIDE=
   # Assume test failed (see details in set_test_return_code()).
   set_test_return_code 1
   # Get the current GCP project for downloading kubernetes
@@ -261,30 +259,24 @@ function setup_test_cluster() {
   set -o errexit
   set -o pipefail
 
-  # Set the required variables if necessary.
-  if [[ -z ${K8S_USER_OVERRIDE} ]]; then
-    export K8S_USER_OVERRIDE=$(gcloud config get-value core/account)
-  fi
+  k8s_user=$(gcloud config get-value core/account)
 
-  if [[ -z ${K8S_CLUSTER_OVERRIDE} ]]; then
-    USING_EXISTING_CLUSTER=0
-    export K8S_CLUSTER_OVERRIDE=$(kubectl config current-context)
-    acquire_cluster_admin_role ${K8S_USER_OVERRIDE} ${E2E_CLUSTER_NAME} ${E2E_CLUSTER_REGION} ${E2E_CLUSTER_ZONE}
-    # Make sure we're in the default namespace. Currently kubetest switches to
-    # test-pods namespace when creating the cluster.
-    kubectl config set-context ${K8S_CLUSTER_OVERRIDE} --namespace=default
-  fi
+  USING_EXISTING_CLUSTER=0
+
+  k8s_cluster=$(kubectl config current-context)
+  acquire_cluster_admin_role ${k8s_user} ${E2E_CLUSTER_NAME} ${E2E_CLUSTER_REGION} ${E2E_CLUSTER_ZONE}
+  kubectl config set-context ${k8s_cluster} --namespace=default
+
   readonly USING_EXISTING_CLUSTER
 
-  if [[ -z ${DOCKER_REPO_OVERRIDE} ]]; then
-    export DOCKER_REPO_OVERRIDE=gcr.io/$(gcloud config get-value project)/${E2E_BASE_NAME}-e2e-img
+  if [[ -z ${KO_DOCKER_REPO} ]]; then
+    export KO_DOCKER_REPO=gcr.io/$(gcloud config get-value project)/${E2E_BASE_NAME}-e2e-img
   fi
 
-  echo "- Cluster is ${K8S_CLUSTER_OVERRIDE}"
-  echo "- User is ${K8S_USER_OVERRIDE}"
-  echo "- Docker is ${DOCKER_REPO_OVERRIDE}"
+  echo "- Cluster is ${k8s_cluster}"
+  echo "- User is ${k8s_user}"
+  echo "- Docker is ${KO_DOCKER_REPO}"
 
-  export KO_DOCKER_REPO="${DOCKER_REPO_OVERRIDE}"
   export KO_DATA_PATH="${REPO_ROOT_DIR}/.git"
 
   trap teardown_test_resources EXIT
@@ -294,9 +286,9 @@ function setup_test_cluster() {
     teardown
   fi
 
-  readonly K8S_CLUSTER_OVERRIDE
-  readonly K8S_USER_OVERRIDE
-  readonly DOCKER_REPO_OVERRIDE
+  readonly k8s_cluster
+  readonly k8s_user
+  readonly KO_DOCKER_REPO
 
   # Handle failures ourselves, so we can dump useful info.
   set +o errexit
@@ -394,8 +386,8 @@ function initialize() {
   (( IS_PROW )) && [[ -z "${GCP_PROJECT}" ]] && IS_BOSKOS=1
 
   # Safety checks
-  is_protected_gcr ${DOCKER_REPO_OVERRIDE} && \
-    abort "\$DOCKER_REPO_OVERRIDE set to ${DOCKER_REPO_OVERRIDE}, which is forbidden"
+  is_protected_gcr ${KO_DOCKER_REPO} && \
+    abort "\$KO_DOCKER_REPO set to ${KO_DOCKER_REPO}, which is forbidden"
 
   readonly RUN_TESTS
   readonly EMIT_METRICS
